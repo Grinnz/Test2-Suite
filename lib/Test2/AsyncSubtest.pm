@@ -3,13 +3,14 @@ use strict;
 use warnings;
 
 use Carp qw/croak/;
+use Test2::Util qw/get_tid/;
 
 use Test2::API();
 use Test2::Hub::AsyncSubtest();
 use Test2::Util::Trace();
 use Test2::Event::Exception();
 
-use Test2::Util::HashBase qw/name hub errored events _finished/;
+use Test2::Util::HashBase qw/name hub errored events _finished event_used pid tid/;
 
 our @CARP_NOT = qw/Test2::Tools::AsyncSubtest/;
 
@@ -18,6 +19,9 @@ sub init {
 
     croak "'name' is a required attribute"
         unless $self->{+NAME};
+
+    $self->{+PID} = $$;
+    $self->{+TID} = get_tid();
 
     unless($self->{+HUB}) {
         my $ipc = Test2::API::test2_ipc();
@@ -93,6 +97,12 @@ sub finish {
     croak "Subtest is already finished"
         if $self->{+_FINISHED}++;
 
+    croak "Subtest can only be finished in the process that created it"
+        unless $$ == $self->{+PID};
+
+    croak "Subtest can only be finished in the thread that created it"
+        unless get_tid == $self->{+TID};
+
     my $hub = $self->{+HUB};
     my $trace = $params{trace} ||= Test2::Util::Trace->new(
         frame => [caller[0]],
@@ -113,6 +123,14 @@ sub event_data {
     my $self = shift;
     my $hub = $self->{+HUB};
 
+    croak "Subtest data can only be used in the process that created it"
+        unless $$ == $self->{+PID};
+
+    croak "Subtest data can only be used in the thread that created it"
+        unless get_tid == $self->{+TID};
+
+    $self->{+EVENT_USED} = 1;
+
     return (
         pass => $hub->is_passing,
         name => $self->{+NAME},
@@ -126,9 +144,28 @@ sub diagnostics {
     # If the subtest died then we've already sent an appropriate event. No
     # need to send another telling the user that the plan was wrong.
     return if $self->{+ERRORED};
+
+    croak "Subtest diagnostics can only be used in the process that created it"
+        unless $$ == $self->{+PID};
+
+    croak "Subtest diagnostics can only be used in the thread that created it"
+        unless get_tid == $self->{+TID};
+
     my $hub = $self->{+HUB};
     return if $hub->check_plan;
     return "Bad subtest plan, expected " . $hub->plan . " but ran " . $hub->count;
+}
+
+sub DESTROY {
+    my $self = shift;
+    return if $self->{+EVENT_USED};
+    return if $self->{+PID} != $$;
+    return if $self->{+TID} != get_tid;
+
+    warn "Subtest $self->{+NAME} did not finish!" unless $self->{+_FINISHED};
+    warn "Subtest $self->{+NAME} was not used to procude any events";
+
+    exit 255;
 }
 
 1;
