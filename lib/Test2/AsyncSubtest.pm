@@ -169,3 +169,145 @@ sub DESTROY {
 }
 
 1;
+
+__END__
+
+=pod
+
+=encoding UTF-8
+
+=head1 NAME
+
+Test2::AsyncSubtest - Object representing an async subtest.
+
+=head1 DESCRIPTION
+
+Regular subtests have a limited scope, they start, events are generated, then
+they close and send an L<Test2::Event::Subtest> event. This is a problem if you
+want the subtest to keep recieving events while other events are also being
+generated. This class implements subtests that stay pen until you decide to
+close them.
+
+This i mainly useful for tools that start a subtest in one process or thread
+and then spawn children. In many cases it is nice to let the parent process
+continue instead of waiting on the children.
+
+=head1 SYNOPSYS
+
+B<Note:> Most people should use L<Test2::Tools::AsyncSubtest> instead of
+directly interfacing with this package.
+
+    use Test2::AsyncSubtest;
+
+    my $ast = Test2::AsyncSubtest->new(name => 'a subtest');
+
+    ok(1, "event outside of subtest");
+
+    $ast->run(sub { ok(1, 'event in subtest') }
+
+    ok(1, "another event outside of subtest");
+
+    $ast->run(sub { ok(1, 'another event in subtest') }
+
+    ...
+
+    my $bool = $ast->finish;
+
+    $ctx->send_event(
+        'Subtest',
+        $ast->event_data,
+    );
+
+    $ctx->diag($_) for $ast->diagnostics;
+
+=head1 CONSTRUCTION
+
+    my $ast = Test2::AsyncSubtest->new(
+        name => 'a subtest',
+        hub  => undef,
+    );
+
+=over 4
+
+=item name => $name (required)
+
+Specify the subtest name. This argument is required.
+
+=item hub => $hub (optional)
+
+Specify a hub to use. This is almost never necessary, typically you let the
+constructor create a hub for you.
+
+If you do provide your own hub it should be an instance of
+L<Test2::Hub::AsyncSubtest>.
+
+=back
+
+=head1 METHODS
+
+=over 4
+
+=item $passing = $ast->run(sub { ... })
+
+=item $passing = $ast->run(%params, sub { ... })
+
+Run will run the provided codeblock with the subtest hub at the top of the
+stack. The hub will be removed from the stack when the codeblock returns.
+
+The codelbock must be the very last argument to the sub. All other arguments
+will be used as an C<%params> hash.
+
+Params may be C<< args => [...] >>, which will be passed into the codeblock as
+argments. Or they may be C<< trace => Test2::Util::Trace->new(...) >> to
+provide a trace for any events generated.
+
+=item $passing = $ast->finish()
+
+=item $passing = $ast->finish(trace => $trace)
+
+This will complete the subtest. Optinally you may provide C<< trace => $trace
+>> which must be an instance of L<Test2::Util::Trace>.
+
+=item %event_data = $ast->event_data()
+
+Get the data that should be used in a call to
+C<< $ctx->send_event(Subtest, %event_data) >> for the final
+L<Test2::Event::Subtest> event.
+
+=item @diags = $ast->diagnostics()
+
+Get the extra diagnostics that should be displayed at the end of the subtest.
+
+=back
+
+=head1 SOURCE
+
+The source code repository for Test2-Suite can be found at
+F<http://github.com/Test-More/Test2-Suite/>.
+
+=head1 MAINTAINERS
+
+=over 4
+
+=item Chad Granum E<lt>exodist@cpan.orgE<gt>
+
+=back
+
+=head1 AUTHORS
+
+=over 4
+
+=item Chad Granum E<lt>exodist@cpan.orgE<gt>
+
+=back
+
+=head1 COPYRIGHT
+
+Copyright 2015 Chad Granum E<lt>exodist7@gmail.comE<gt>.
+
+This program is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+See F<http://dev.perl.org/licenses/>
+
+=cut
