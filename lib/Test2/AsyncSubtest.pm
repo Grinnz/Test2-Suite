@@ -188,7 +188,7 @@ want the subtest to keep recieving events while other events are also being
 generated. This class implements subtests that stay pen until you decide to
 close them.
 
-This i mainly useful for tools that start a subtest in one process or thread
+This is mainly useful for tools that start a subtest in one process or thread
 and then spawn children. In many cases it is nice to let the parent process
 continue instead of waiting on the children.
 
