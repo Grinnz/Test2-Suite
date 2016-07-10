@@ -2,131 +2,138 @@ package Test2::Bundle::Extended;
 use strict;
 use warnings;
 
-use base 'Exporter';
-
 our $VERSION = '0.000051';
+our @CARP_NOT = qw/Test2::Bundle/;
+
+use base 'Test2::Bundle';
 
 use Carp qw/croak/;
 
 use Test2::Plugin::SRand();
-use Test2::Plugin::UTF8();
 use Test2::Tools::Target();
-
 use Test2::Plugin::ExitSummary;
 
-use Test2::API qw/intercept context/;
-
-use Test2::Tools::Event qw/gen_event/;
-
-use Test2::Tools::Defer qw/def do_def/;
-
-use Test2::Tools::Basic qw{
-    ok pass fail diag note todo skip
-    plan skip_all done_testing bail_out
-};
-
-use Test2::Tools::Compare qw{
-    is like isnt unlike
-    match mismatch validator
-    hash array bag object meta number string subset
-    in_set not_in_set check_set
-    item field call call_list call_hash prop check all_items all_keys all_vals all_values
-    end filter_items
-    T F D DF E DNE FDNE U
-    event fail_events
-    exact_ref
-};
-
-use Test2::Tools::Warnings qw{
-    warns warning warnings no_warnings
-};
-
-use Test2::Tools::ClassicCompare qw/cmp_ok/;
-
-use Test2::Tools::Subtest   qw/subtest_buffered/;
-use Test2::Tools::Class     qw/can_ok isa_ok DOES_ok/;
-use Test2::Tools::Encoding  qw/set_encoding/;
-use Test2::Tools::Exports   qw/imported_ok not_imported_ok/;
-use Test2::Tools::Ref       qw/ref_ok ref_is ref_is_not/;
-use Test2::Tools::Mock      qw/mock mocked/;
-use Test2::Tools::Exception qw/dies lives/;
-
-
-BEGIN {
-    *subtest = \&subtest_buffered;
+sub PRAGMAS() {
+    (
+        'strict'              => {args => [], toggle => {-no_pragmas => 0, -no_strict   => 0}},
+        'warnings'            => {args => [], toggle => {-no_pragmas => 0, -no_warnings => 0}},
+        'Test2::Plugin::UTF8' => {args => [], toggle => {-no_pragmas => 0, -no_utf8     => 0}},
+    );
 }
 
-our @EXPORT = qw{
-    ok pass fail diag note todo skip
-    plan skip_all done_testing bail_out
+sub EXPORTS() {
+    (
+        'Test2::API' => {
+            v1 => [qw/intercept context/],
+        },
+        'Test2::Tools::Event' => {
+            v1 => [qw/gen_event/],
+        },
+        'Test2::Tools::Defer' => {
+            v1 => [qw/def do_def/],
+        },
+        'Test2::Tools::Basic' => {
+            v1 => [
+                qw{
+                    ok pass fail diag note todo skip plan skip_all done_testing
+                    bail_out
+                }
+            ],
+        },
+        'Test2::Tools::Compare' => {
+            v1 => [
+                qw{
+                    is like isnt unlike match mismatch validator hash array bag
+                    object meta number string subset in_set not_in_set
+                    check_set item field call call_list call_hash prop check
+                    all_items all_keys all_vals all_values end filter_items T F
+                    D DF E DNE FDNE U event fail_events exact_ref
+                }
+            ],
+            meta_check => {meta => 0, meta_check => {}},
+        },
+        'Test2::Tools::Warnings' => {
+            v1 => [qw{warns warning warnings no_warnings}],
+        },
+        'Test2::Tools::ClassicCompare' => {
+            v1 => [qw/cmp_ok/],
+        },
+        'Test2::Tools::Subtest' => {
+            v1 => [subtest_buffered => {-as => 'subtest'}],
+        },
+        'Test2::Tools::Class' => {
+            v1 => [qw/can_ok isa_ok DOES_ok/],
+        },
+        'Test2::Tools::Encoding' => {
+            v1 => [qw/set_encoding/],
+        },
+        'Test2::Tools::Exports' => {
+            v1 => [qw/imported_ok not_imported_ok/],
+        },
+        'Test2::Tools::Ref' => {
+            v1 => [qw/ref_ok ref_is ref_is_not/],
+        },
+        'Test2::Tools::Mock' => {
+            v1 => [qw/mock mocked/],
+        },
+        'Test2::Tools::Exception' => {
+            v1 => [qw/dies lives/],
+        },
+    );
+}
 
-    intercept context
-
-    gen_event
-
-    def do_def
-
-    cmp_ok
-
-    warns warning warnings no_warnings
-
-    subtest
-    can_ok isa_ok DOES_ok
-    set_encoding
-    imported_ok not_imported_ok
-    ref_ok ref_is ref_is_not
-    mock mocked
-    dies lives
-
-    is like isnt unlike
-    match mismatch validator
-    hash array bag object meta number string subset
-    in_set not_in_set check_set
-    item field call call_list call_hash prop check all_items all_keys all_vals all_values
-    end filter_items
-    T F D DF E DNE FDNE U
-    event fail_events
-    exact_ref
-};
-
-my $SRAND;
-sub import {
+sub munge_import_args {
     my $class = shift;
+    my @out = @_;
 
-    my $caller = caller;
-    my (@exports, %options);
-    while (my $arg = shift @_) {
-        push @exports => $arg and next unless substr($arg, 0, 1) eq '-';
-        $options{$arg} = shift @_;
+    my ($val, $found) = (0, 0);
+    for my $arg (@out) {
+        next if $val--;
+
+        if (substr($arg, 0, 1) eq '-') {
+            $val = 1;
+            next;
+        }
+
+        next if $arg eq ':meta_check';
+
+        $found = 1;
+        last;
     }
 
+    unshift @out => ':v1' unless $found;
+
+    return @out;
+}
+
+my $SRAND;
+sub before_import {
+    my $class = shift;
+    my %params = @_;
+    my ($into, $options, $ok_opts) = @params{qw/into options ok_opts/};
+
+    @{$ok_opts}{qw/-srand -no_srand/} = (1, 1);
+
     # SRand handling
-    my $srand    = delete $options{'-srand'};
-    my $no_srand = delete $options{'-no_srand'};
+    my $srand    = $options->{'-srand'};
+    my $no_srand = $options->{'-no_srand'};
 
     croak "Cannot combine '-srand' and '-no_srand' options"
         if $no_srand && defined($srand);
 
     Test2::Plugin::SRand->import($srand ? $srand : ())
         if $srand || !($no_srand || $SRAND++);
+}
 
-    # Pragmas
-    my $no_pragmas  = delete $options{'-no_pragmas'};
-    my $no_strict   = delete $options{'-no_strict'} || $no_pragmas;
-    my $no_warnings = delete $options{'-no_warnings'} || $no_pragmas;
-    my $no_utf8     = delete $options{'-no_utf8'} || $no_pragmas;
+sub after_import {
+    my $class = shift;
+    my %params = @_;
+    my ($into, $options, $ok_opts) = @params{qw/into options ok_opts/};
 
-    strict->import()              unless $no_strict;
-    'warnings'->import()          unless $no_warnings;
-    Test2::Plugin::UTF8->import() unless $no_utf8;
-
-    my $target = delete $options{'-target'};
-    Test2::Tools::Target->import_into($caller, $target)
+    $ok_opts->{'-target'} = 1;
+    my $target = $options->{'-target'};
+    Test2::Tools::Target->import_into($into, $target)
         if $target;
-
-    croak "Unknown option(s): " . join(', ', keys %options) if keys %options;
-
-    $class->Exporter::export_to_level(1, @exports);
 }
 
 1;
@@ -325,6 +332,8 @@ See L<Test2::Tools::Compare>.
 =item $check = object { ... }
 
 =item $check = meta { ... }
+
+=item $check = meta_check { ... }
 
 =item $check = number($num)
 
